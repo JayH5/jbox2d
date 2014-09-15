@@ -3,3 +3,7 @@ target/
 .settings/
 *.log
 
+# Intellij
+*.iml
+.idea/
+
