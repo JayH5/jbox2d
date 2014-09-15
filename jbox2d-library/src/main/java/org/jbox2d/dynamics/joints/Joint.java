@@ -1,7 +1,7 @@
 /*******************************************************************************
  * Copyright (c) 2013, Daniel Murphy
  * All rights reserved.
- * 
+ *
  * Redistribution and use in source and binary forms, with or without modification,
  * are permitted provided that the following conditions are met:
  * 	* Redistributions of source code must retain the above copyright notice,
@@ -9,7 +9,7 @@
  * 	* Redistributions in binary form must reproduce the above copyright notice,
  * 	  this list of conditions and the following disclaimer in the documentation
  * 	  and/or other materials provided with the distribution.
- * 
+ *
  * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND
  * ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED
  * WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE DISCLAIMED.
@@ -33,7 +33,7 @@ import org.jbox2d.pooling.IWorldPool;
 /**
  * The base joint class. Joints are used to constrain two bodies together in various fashions. Some
  * joints also feature limits and motors.
- * 
+ *
  * @author Daniel Murphy
  */
 public abstract class Joint {
@@ -65,6 +65,8 @@ public abstract class Joint {
         return new RopeJoint(world.getPool(), (RopeJointDef) def);
       case MOTOR:
         return new MotorJoint(world.getPool(), (MotorJointDef) def);
+      case TOPDOWNFRICTION:
+        return new TopDownFrictionJoint(world.getPool(), (TopDownFrictionJointDef) def);
       case UNKNOWN:
       default:
         return null;
@@ -126,7 +128,7 @@ public abstract class Joint {
 
   /**
    * get the type of the concrete joint.
-   * 
+   *
    * @return
    */
   public JointType getType() {
@@ -142,7 +144,7 @@ public abstract class Joint {
 
   /**
    * get the second body attached to this joint.
-   * 
+   *
    * @return
    */
   public final Body getBodyB() {
@@ -151,21 +153,21 @@ public abstract class Joint {
 
   /**
    * get the anchor point on bodyA in world coordinates.
-   * 
+   *
    * @return
    */
   public abstract void getAnchorA(Vec2 out);
 
   /**
    * get the anchor point on bodyB in world coordinates.
-   * 
+   *
    * @return
    */
   public abstract void getAnchorB(Vec2 out);
 
   /**
    * get the reaction force on body2 at the joint anchor in Newtons.
-   * 
+   *
    * @param inv_dt
    * @return
    */
@@ -173,7 +175,7 @@ public abstract class Joint {
 
   /**
    * get the reaction torque on body2 in N*m.
-   * 
+   *
    * @param inv_dt
    * @return
    */
@@ -210,7 +212,7 @@ public abstract class Joint {
 
   /**
    * Short-cut function to determine if either body is inactive.
-   * 
+   *
    * @return
    */
   public boolean isActive() {
