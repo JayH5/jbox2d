@@ -34,6 +34,8 @@ public class TopDownFrictionJoint extends Joint {
   private float m_dt;
   private float m_inv_dt;
 
+  private boolean m_isActive;
+
   protected TopDownFrictionJoint(IWorldPool worldPool, TopDownFrictionJointDef def) {
     super(worldPool, def);
     m_kineticCOF = def.kineticCOF;
@@ -82,11 +84,17 @@ public class TopDownFrictionJoint extends Joint {
     m_dt = data.step.dt / data.step.velocityIterations;
     m_inv_dt = data.step.inv_dt * data.step.velocityIterations;
 
+    m_isActive = isActive();
+
     m_lambda_p.setZero();
   }
 
   @Override
   public void solveVelocityConstraints(SolverData data) {
+    if (!m_isActive) {
+      return;
+    }
+
     if (m_kineticFriction > 0f) {
       final Vec2 linearVelocity = data.velocities[m_indexA].v;
 

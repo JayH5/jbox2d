@@ -216,6 +216,9 @@ public abstract class Joint {
    * @return
    */
   public boolean isActive() {
+    if (m_bodyB == null) {
+      return m_bodyA.isActive();
+    }
     return m_bodyA.isActive() && m_bodyB.isActive();
   }
 
