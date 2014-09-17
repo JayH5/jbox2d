@@ -1,7 +1,6 @@
 package org.jbox2d.dynamics.joints;
 
 import org.jbox2d.common.MathUtils;
-import org.jbox2d.common.Rot;
 import org.jbox2d.common.Vec2;
 import org.jbox2d.dynamics.SolverData;
 import org.jbox2d.pooling.IWorldPool;
@@ -30,7 +29,6 @@ public class TopDownFrictionJoint extends Joint {
   private float m_IA;
   private float m_invIA;
 
-  private Rot m_rotA = new Rot();
   private float m_kineticFriction;
 
   protected TopDownFrictionJoint(IWorldPool worldPool, TopDownFrictionJointDef def) {
@@ -74,9 +72,6 @@ public class TopDownFrictionJoint extends Joint {
     m_IA = m_bodyA.m_I;
     m_invIA = m_bodyA.m_invI;
 
-    // Rotation
-    m_rotA.set(m_bodyA.m_sweep.a);
-
     // Calculate kinetic friction due to gravity
     m_kineticFriction = m_massA * ACCELERATION_GRAVITY * m_kineticCOF;
 
@@ -94,11 +89,11 @@ public class TopDownFrictionJoint extends Joint {
       momentum.set(linearVelocity).mulLocal(m_massA);
       force.set(momentum).mulLocal(data.step.inv_dt);
 
-      // Clamp the force at a local scale
-      Rot.mulToOut(m_rotA, force, force);
-      force.x = MathUtils.clamp(force.x, -m_kineticFriction, m_kineticFriction);
-      force.y = MathUtils.clamp(force.y, -m_kineticFriction, m_kineticFriction);
-      Rot.mulTrans(m_rotA, force, force);
+      // Clamp the force to the kinetic friction limit
+      float forceMagnitude = force.length();
+      if (forceMagnitude > m_kineticFriction) {
+        force.mulLocal(m_kineticFriction / forceMagnitude);
+      }
 
       // Calculate the new momentum from the force
       momentum.set(force).mulLocal(data.step.dt);
