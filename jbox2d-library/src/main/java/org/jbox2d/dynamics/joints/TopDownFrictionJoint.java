@@ -31,6 +31,9 @@ public class TopDownFrictionJoint extends Joint {
 
   private float m_kineticFriction;
 
+  private float m_dt;
+  private float m_inv_dt;
+
   protected TopDownFrictionJoint(IWorldPool worldPool, TopDownFrictionJointDef def) {
     super(worldPool, def);
     m_kineticCOF = def.kineticCOF;
@@ -51,13 +54,13 @@ public class TopDownFrictionJoint extends Joint {
   }
 
   @Override
-  public void getReactionForce(float v, Vec2 vec2) {
-    vec2.set(v * m_lambda_p.x, v * m_lambda_p.y);
+  public void getReactionForce(float inv_dt, Vec2 argOut) {
+    argOut.set(m_lambda_p).mulLocal(inv_dt);
   }
 
   @Override
-  public float getReactionTorque(float v) {
-    return v * m_lambda_a_p;
+  public float getReactionTorque(float inv_dt) {
+    return inv_dt * m_lambda_a_p;
   }
 
   @Override
@@ -75,6 +78,10 @@ public class TopDownFrictionJoint extends Joint {
     // Calculate kinetic friction due to gravity
     m_kineticFriction = m_massA * ACCELERATION_GRAVITY * m_kineticCOF;
 
+    // Calculate time step per iteration
+    m_dt = data.step.dt / data.step.velocityIterations;
+    m_inv_dt = data.step.inv_dt * data.step.velocityIterations;
+
     m_lambda_p.setZero();
   }
 
@@ -87,7 +94,7 @@ public class TopDownFrictionJoint extends Joint {
       final Vec2 momentum = pool.popVec2();
       final Vec2 force = pool.popVec2();
       momentum.set(linearVelocity).mulLocal(m_massA);
-      force.set(momentum).mulLocal(data.step.inv_dt);
+      force.set(momentum).mulLocal(m_inv_dt);
 
       // Clamp the force to the kinetic friction limit
       float forceMagnitude = force.length();
@@ -96,7 +103,7 @@ public class TopDownFrictionJoint extends Joint {
       }
 
       // Calculate the new momentum from the force
-      momentum.set(force).mulLocal(data.step.dt);
+      momentum.set(force).mulLocal(m_dt);
 
       // Update the total momentum
       m_lambda_p.addLocal(momentum);
@@ -117,13 +124,13 @@ public class TopDownFrictionJoint extends Joint {
 
       // Calculate angular momentum and torque
       float angularMomentum = m_IA * angularVelocity;
-      float torque = data.step.inv_dt * angularMomentum;
+      float torque = m_inv_dt * angularMomentum;
 
       // Clamp the torque
       torque = MathUtils.clamp(torque, -m_frictionTorque, m_frictionTorque);
 
       // Calculate the new angular momentum from the torque
-      angularMomentum = data.step.dt * torque;
+      angularMomentum = m_dt * torque;
 
       // Update the total momentum
       m_lambda_a_p += angularMomentum;
