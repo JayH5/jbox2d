@@ -1,8 +1,10 @@
 package org.jbox2d.dynamics.joints;
 
 import org.jbox2d.common.MathUtils;
+import org.jbox2d.common.Settings;
 import org.jbox2d.common.Vec2;
 import org.jbox2d.dynamics.SolverData;
+import org.jbox2d.dynamics.contacts.Velocity;
 import org.jbox2d.pooling.IWorldPool;
 
 /**
@@ -13,36 +15,53 @@ import org.jbox2d.pooling.IWorldPool;
  */
 public class TopDownFrictionJoint extends Joint {
 
-  private static final float ACCELERATION_GRAVITY = 9.81f;
+  private final float staticFrictionForce;
+  private final float kineticFrictionForce;
 
-  private final float m_kineticCOF;
-  private final float m_frictionTorque;
+  private final float staticFrictionTorque;
+  private final float kineticFrictionTorque;
 
-  private final Vec2 m_lambda_p = new Vec2();
-  private float m_lambda_a_p = 0f;
+  private final boolean hasLinearStaticFriction;
+  private final boolean hasAngularStaticFriction;
 
-  private int m_indexA;
+  private final boolean hasLinearKineticFriction;
+  private final boolean hasAngularKineticFriction;
 
-  private float m_massA;
-  private float m_invMassA;
+  private enum FrictionType {
+    STATIC, KINETIC, NONE
+  }
 
-  private float m_IA;
-  private float m_invIA;
+  private FrictionType frictionType;
 
-  private float m_kineticFriction;
+  private final Vec2 lambdaP = new Vec2();
+  private float lambdaAP = 0f;
 
-  private float m_dt;
-  private float m_inv_dt;
+  private int index;
 
-  private boolean m_isActive;
+  private float mass;
+  private float inverseMass;
+
+  private float inertia;
+  private float inverseInertia;
+
+  private float dt;
+  private float inverseDt;
+
+  private boolean isActive;
 
   protected TopDownFrictionJoint(IWorldPool worldPool, TopDownFrictionJointDef def) {
     super(worldPool, def);
-    m_kineticCOF = def.kineticCOF;
-    m_frictionTorque = def.frictionTorque;
 
-    m_bodyA = def.bodyA;
-    m_bodyB = null;
+    staticFrictionForce = def.staticFrictionForce;
+    kineticFrictionForce = def.kineticFrictionForce;
+
+    staticFrictionTorque = def.staticFrictionTorque;
+    kineticFrictionTorque = def.kineticFrictionTorque;
+
+    hasLinearStaticFriction = staticFrictionForce > 0f;
+    hasAngularStaticFriction = staticFrictionTorque > 0f;
+    hasLinearKineticFriction = kineticFrictionForce > 0f;
+    hasAngularKineticFriction = kineticFrictionTorque > 0f;
   }
 
   @Override
@@ -57,102 +76,175 @@ public class TopDownFrictionJoint extends Joint {
 
   @Override
   public void getReactionForce(float inv_dt, Vec2 argOut) {
-    argOut.set(m_lambda_p).mulLocal(inv_dt);
+    argOut.set(lambdaP).mulLocal(inv_dt);
   }
 
   @Override
   public float getReactionTorque(float inv_dt) {
-    return inv_dt * m_lambda_a_p;
+    return inv_dt * lambdaAP;
   }
 
   @Override
   public void initVelocityConstraints(SolverData data) {
-    m_indexA = m_bodyA.m_islandIndex;
+    isActive = isActive();
+    if (!isActive) {
+      return;
+    }
+
+    index = m_bodyA.m_islandIndex;
 
     // Mass
-    m_massA = m_bodyA.m_mass;
-    m_invMassA = m_bodyA.m_invMass;
+    mass = m_bodyA.m_mass;
+    inverseMass = m_bodyA.m_invMass;
 
     // Moment of inertia
-    m_IA = m_bodyA.m_I;
-    m_invIA = m_bodyA.m_invI;
+    inertia = m_bodyA.m_I;
+    inverseInertia = m_bodyA.m_invI;
 
-    // Calculate kinetic friction due to gravity
-    m_kineticFriction = m_massA * ACCELERATION_GRAVITY * m_kineticCOF;
+    // Determine the starting friction type
+    if ((hasLinearStaticFriction || hasAngularStaticFriction) && isStatic(data.velocities[index])) {
+      frictionType = FrictionType.STATIC;
+    } else if (hasLinearKineticFriction || hasAngularKineticFriction) {
+      frictionType = FrictionType.KINETIC;
+    } else {
+      frictionType = FrictionType.NONE;
+    }
 
     // Calculate time step per iteration
-    m_dt = data.step.dt / data.step.velocityIterations;
-    m_inv_dt = data.step.inv_dt * data.step.velocityIterations;
+    dt = data.step.dt / data.step.velocityIterations;
+    inverseDt = data.step.inv_dt * data.step.velocityIterations;
 
-    m_isActive = isActive();
-
-    m_lambda_p.setZero();
+    lambdaP.setZero();
   }
 
   @Override
   public void solveVelocityConstraints(SolverData data) {
-    if (!m_isActive) {
+    if (!isActive || frictionType == FrictionType.NONE) {
       return;
     }
 
-    if (m_kineticFriction > 0f) {
-      final Vec2 linearVelocity = data.velocities[m_indexA].v;
+    final Velocity velocity = data.velocities[index];
+    applyLinearFriction(velocity);
+    applyAngularFriction(velocity);
+  }
 
-      // Calculate current momentum and force
-      final Vec2 momentum = pool.popVec2();
-      final Vec2 force = pool.popVec2();
-      momentum.set(linearVelocity).mulLocal(m_massA);
-      force.set(momentum).mulLocal(m_inv_dt);
-
-      // Clamp the force to the kinetic friction limit
-      float forceMagnitude = force.length();
-      if (forceMagnitude > m_kineticFriction) {
-        force.mulLocal(m_kineticFriction / forceMagnitude);
-      }
-
-      // Calculate the new momentum from the force
-      momentum.set(force).mulLocal(m_dt);
-
-      // Update the total momentum
-      m_lambda_p.addLocal(momentum);
-
-      // Calculate the velocity change due to friction
-      final Vec2 frictionVelocity = pool.popVec2();
-      frictionVelocity.set(momentum).mulLocal(m_invMassA);
-
-      // Counteract the velocity
-      data.velocities[m_indexA].v.subLocal(frictionVelocity);
-
-      // Give back the vectors to the pool
-      pool.pushVec2(3);
+  private void applyLinearFriction(Velocity velocity) {
+    if (frictionType == FrictionType.STATIC && !hasLinearStaticFriction
+        || frictionType == FrictionType.KINETIC && !hasLinearKineticFriction) {
+      return;
     }
 
-    if (m_frictionTorque != 0f) {
-      final float angularVelocity = data.velocities[m_indexA].w;
+    final Vec2 linearVelocity = velocity.v;
 
-      // Calculate angular momentum and torque
-      float angularMomentum = m_IA * angularVelocity;
-      float torque = m_inv_dt * angularMomentum;
+    // Calculate current momentum and force
+    final Vec2 momentum = pool.popVec2();
+    final Vec2 force = pool.popVec2();
+    momentum.set(linearVelocity).mulLocal(mass);
+    force.set(momentum).mulLocal(inverseDt);
 
-      // Clamp the torque
-      torque = MathUtils.clamp(torque, -m_frictionTorque, m_frictionTorque);
+    float forceMagnitude = force.length();
+    if (frictionType == FrictionType.STATIC) {
+      // Force greater than the force of static friction, switch to kinetic friction
+      if (forceMagnitude > staticFrictionForce) {
+        frictionType = FrictionType.KINETIC;
 
-      // Calculate the new angular momentum from the torque
-      angularMomentum = m_dt * torque;
+        // If there is no kinetic friction then there is nothing to do
+        if (!hasLinearKineticFriction) {
+          pool.pushVec2(2);
+          return;
+        }
+      }
+    }
 
-      // Update the total momentum
-      m_lambda_a_p += angularMomentum;
+    if (frictionType == FrictionType.KINETIC || !hasLinearStaticFriction) {
+      // Clamp the applied force to the kinetic friction amount
+      if (forceMagnitude > kineticFrictionForce) {
+        force.mulLocal(kineticFrictionForce / forceMagnitude);
+      }
+    }
 
-      // Calculate the angular velocity change due to friction
-      float frictionAngularVelocity = angularMomentum * m_invIA;
+    // Calculate the new momentum from the force
+    momentum.set(force).mulLocal(dt);
 
-      // Counteract the angular velocity
-      data.velocities[m_indexA].w -= frictionAngularVelocity;
+    // Update the total momentum
+    lambdaP.addLocal(momentum);
+
+    // Calculate the velocity change due to friction
+    final Vec2 frictionVelocity = pool.popVec2();
+    frictionVelocity.set(momentum).mulLocal(inverseMass);
+
+    // Counteract the velocity
+    velocity.v.subLocal(frictionVelocity);
+
+    // Check if the object has become static
+    if (frictionType != FrictionType.STATIC && isStatic(velocity)) {
+      frictionType = FrictionType.STATIC;
+    }
+
+    // Give back the vectors to the pool
+    pool.pushVec2(3);
+  }
+
+  private void applyAngularFriction(Velocity velocity) {
+    if (frictionType == FrictionType.STATIC && !hasAngularStaticFriction
+        || frictionType == FrictionType.KINETIC && !hasAngularKineticFriction) {
+      return;
+    }
+
+    final float angularVelocity = velocity.w;
+
+    // Calculate angular momentum and torque
+    float angularMomentum = inertia * angularVelocity;
+    float torque = inverseDt * angularMomentum;
+
+    float torqueMagnitude = MathUtils.abs(torque);
+    if (frictionType == FrictionType.STATIC) {
+      // If applied torque greater than static friction torque, change to kinetic friction
+      if (torqueMagnitude > staticFrictionTorque) {
+        frictionType = FrictionType.KINETIC;
+
+        // If there is no kinetic friction then there is nothing to do
+        if (!hasAngularKineticFriction) {
+          return;
+        }
+      }
+    }
+
+    if (frictionType == FrictionType.KINETIC || !hasAngularStaticFriction) {
+      // Clamp the applied force to the kinetic friction amount
+      if (torqueMagnitude > kineticFrictionTorque) {
+        torque = MathUtils.clamp(torque, -kineticFrictionTorque, kineticFrictionTorque);
+      }
+    }
+
+    // Calculate the new angular momentum from the torque
+    angularMomentum = dt * torque;
+
+    // Update the total momentum
+    lambdaAP += angularMomentum;
+
+    // Calculate the angular velocity change due to friction
+    float frictionAngularVelocity = angularMomentum * inverseInertia;
+
+    // Counteract the angular velocity
+    velocity.w = angularVelocity - frictionAngularVelocity;
+
+    // Check if the object has become static
+    if (frictionType != FrictionType.STATIC && isStatic(velocity)) {
+      frictionType = FrictionType.STATIC;
     }
   }
 
   @Override
   public boolean solvePositionConstraints(SolverData solverData) {
     return true;
+  }
+
+  private boolean isStatic(Velocity velocity) {
+    Vec2 linearVelocity = velocity.v;
+    float angularVelocity = velocity.w;
+    return MathUtils.abs(linearVelocity.x) < Settings.linearSleepTolerance
+        && MathUtils.abs(linearVelocity.y) < Settings.linearSleepTolerance
+        && MathUtils.abs(angularVelocity) < Settings.angularSleepTolerance;
   }
 }

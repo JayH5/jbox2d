@@ -8,18 +8,25 @@ import org.jbox2d.dynamics.Body;
  */
 public class TopDownFrictionJointDef extends JointDef {
 
-  float kineticCOF;
+  float staticFrictionForce;
+  float kineticFrictionForce;
 
-  float frictionTorque;
+  float staticFrictionTorque;
+  float kineticFrictionTorque;
 
   public TopDownFrictionJointDef() {
     super(JointType.TOPDOWNFRICTION);
   }
 
-  public void initialize(Body bodyA, float kineticCOF, float frictionTorque) {
+  public void initialize(Body bodyA, float staticFrictionForce, float kineticFrictionForce,
+      float staticFrictionTorque, float kineticFrictionTorque) {
     this.bodyA = bodyA;
-    this.kineticCOF = kineticCOF;
-    this.frictionTorque = frictionTorque;
+
+    this.staticFrictionForce = staticFrictionForce;
+    this.kineticFrictionForce = kineticFrictionForce;
+
+    this.staticFrictionTorque = staticFrictionTorque;
+    this.kineticFrictionTorque = kineticFrictionTorque;
 
     this.bodyB = null;
     this.collideConnected = false;
