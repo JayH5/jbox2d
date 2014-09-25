@@ -14,6 +14,16 @@ public class TopDownFrictionJointDef extends JointDef {
   float staticFrictionTorque;
   float kineticFrictionTorque;
 
+  /**
+   * The linear velocity at which a body changes from being considered "static" to being considered "dynamic".
+   */
+  public float linearVelocityThreshold = 0.1f;
+
+  /**
+   * The angular velocity at which a body changes from being considered "static" to being considered "dynamic".
+   */
+  public float angularVelocityThreshold = 0.1f;
+
   public TopDownFrictionJointDef() {
     super(JointType.TOPDOWNFRICTION);
   }

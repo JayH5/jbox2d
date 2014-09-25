@@ -1,7 +1,6 @@
 package org.jbox2d.dynamics.joints;
 
 import org.jbox2d.common.MathUtils;
-import org.jbox2d.common.Settings;
 import org.jbox2d.common.Vec2;
 import org.jbox2d.dynamics.SolverData;
 import org.jbox2d.dynamics.contacts.Velocity;
@@ -14,6 +13,9 @@ import org.jbox2d.pooling.IWorldPool;
  * Created by jamie on 2014/09/15.
  */
 public class TopDownFrictionJoint extends Joint {
+
+  private final float linearVelocityThreshold;
+  private final float angularVelocityThreshold;
 
   private final float staticFrictionForce;
   private final float kineticFrictionForce;
@@ -51,6 +53,9 @@ public class TopDownFrictionJoint extends Joint {
 
   protected TopDownFrictionJoint(IWorldPool worldPool, TopDownFrictionJointDef def) {
     super(worldPool, def);
+
+    linearVelocityThreshold = def.linearVelocityThreshold * def.linearVelocityThreshold;
+    angularVelocityThreshold = def.angularVelocityThreshold;
 
     staticFrictionForce = def.staticFrictionForce;
     kineticFrictionForce = def.kineticFrictionForce;
@@ -243,8 +248,7 @@ public class TopDownFrictionJoint extends Joint {
   private boolean isStatic(Velocity velocity) {
     Vec2 linearVelocity = velocity.v;
     float angularVelocity = velocity.w;
-    return MathUtils.abs(linearVelocity.x) < Settings.linearSleepTolerance
-        && MathUtils.abs(linearVelocity.y) < Settings.linearSleepTolerance
-        && MathUtils.abs(angularVelocity) < Settings.angularSleepTolerance;
+    return linearVelocity.lengthSquared() < linearVelocityThreshold
+        && MathUtils.abs(angularVelocity) < angularVelocityThreshold;
   }
 }
